@@ -1,0 +1,227 @@
+---
+title: "Final Project"
+output: pdf_document
+date: "2024-12-01"
+---
+
+## INTRODUCTION - This analysis explores the Ames, Iowa housing data using R's tidyverse package to understand the relationships between various features and the sale price of residential homes. It includes performing cleaning and transformations, generate summary statistics, create visualizations, and fit a linear regression model for prediction.
+
+
+```{r}
+### Reading the Data
+# Load required libraries
+library(tidyverse)
+library(knitr)
+
+file_path <- "/Users/surabhimetpally/Downloads/smetpal_house.csv"
+housing_data <- read_csv(file_path)
+head(housing_data)
+
+```
+
+```{r}
+# Clean the data
+cleaned_data <- housing_data %>%
+  filter(RoofStyle != "Other", MoSold > 4) %>%
+  mutate(SalePrice_scaled = SalePrice / 100000) %>%
+  select(-YearRemodAdd, -HeatingQC)
+
+# Display the first 10 rows and 6 columns
+cleaned_data %>%
+  select(1:6) %>%
+  slice_head(n = 10) %>%
+  kable()
+```
+
+```{r}
+# Summary statistics
+summary_stats <- cleaned_data %>%
+  group_by(BsmtCond) %>%
+  summarise(
+    mean_SalePrice = mean(SalePrice, na.rm = TRUE),
+    sd_SalePrice = sd(SalePrice, na.rm = TRUE),
+    q1_SalePrice = quantile(SalePrice, 0.25, na.rm = TRUE),
+    q3_SalePrice = quantile(SalePrice, 0.75, na.rm = TRUE),
+    mean_GarageArea = mean(GarageArea, na.rm = TRUE),
+    sd_GarageArea = sd(GarageArea, na.rm = TRUE),
+    q1_GarageArea = quantile(GarageArea, 0.25, na.rm = TRUE),
+    q3_GarageArea = quantile(GarageArea, 0.75, na.rm = TRUE),
+    mean_GrLivArea = mean(GrLivArea, na.rm = TRUE),
+    sd_GrLivArea = sd(GrLivArea, na.rm = TRUE),
+    q1_GrLivArea = quantile(GrLivArea, 0.25, na.rm = TRUE),
+    q3_GrLivArea = quantile(GrLivArea, 0.75, na.rm = TRUE)
+  ) %>%
+  ungroup()
+
+# Display the summary statistics
+summary_stats %>%
+  kable()
+
+```
+
+```{r}
+# Scatter plot
+ggplot(cleaned_data, aes(x = GarageArea, y = SalePrice, color = BsmtCond)) +
+  geom_point() +
+  theme_minimal() +
+  labs(
+    title = "SalePrice vs GarageArea",
+    x = "Garage Area",
+    y = "Sale Price",
+    color = "Basement Condition"
+  )
+```
+
+```{r}
+# Fit the model
+model <- lm(SalePrice ~ GarageArea + GrLivArea, data = cleaned_data)
+
+# Model summary
+summary(model)
+
+```
+
+```{r}
+# Predict for new data
+new_data <- tibble(
+  GarageArea = c(500, 700),
+  GrLivArea = c(1500, 2000)
+)
+predictions <- predict(model, newdata = new_data)
+predictions
+```
+
+### Part 2
+
+## For this section, I will explore and analyze an e-commerce dataset sourced from Kaggle. The dataset contains transaction details, including information about individual sales, products, and customer demographics. My goal is to use this data to answer two specific questions by performing both numerical and graphical analyses:
+## What is the average quantity of items sold per invoice for each country?
+## How does the total sales amount (calculated as Quantity * UnitPrice) vary across different countries?
+
+```{r}
+  
+# Load required libraries
+library(tidyverse)
+
+# Dataset URL
+url <- "https://www.kaggleusercontent.com/datasets/carrie1/ecommerce-data/download?datasetVersionNumber=1"
+
+# Read the dataset into R
+file_path <- "/Users/surabhimetpally/Downloads/e-commerce.data.csv"
+data <- read_csv(file_path)
+head(data)
+
+```
+
+
+```{r}
+# Custom function to summarize numeric and categorical data
+summarize_data <- function(data, columns = names(data), group_var = NULL) {
+  # Select specified columns
+  selected_data <- data %>% select(all_of(columns))
+  
+  # Initialize a list to store results
+  results <- list()
+  
+  # Numeric columns: Mean, Variance, Quantiles
+  numeric_cols <- selected_data %>% select(where(is.numeric))
+  if (ncol(numeric_cols) > 0) {
+    numeric_summary <- numeric_cols %>%
+      summarise(across(everything(), list(
+        mean = ~ mean(.x, na.rm = TRUE),
+        variance = ~ var(.x, na.rm = TRUE),
+        q05 = ~ quantile(.x, 0.05, na.rm = TRUE),
+        q95 = ~ quantile(.x, 0.95, na.rm = TRUE)
+      ), .names = "{.col}_{.fn}"))
+    
+    # Grouped numeric summaries if group_var is provided
+    if (!is.null(group_var)) {
+      numeric_summary <- numeric_cols %>%
+        bind_cols(data %>% select(all_of(group_var))) %>%
+        group_by(across(all_of(group_var))) %>%
+        summarise(across(everything(), list(
+          mean = ~ mean(.x, na.rm = TRUE),
+          variance = ~ var(.x, na.rm = TRUE),
+          q05 = ~ quantile(.x, 0.05, na.rm = TRUE),
+          q95 = ~ quantile(.x, 0.95, na.rm = TRUE)
+        ), .names = "{.col}_{.fn}"))
+    }
+    results$numeric_summary <- numeric_summary
+  }
+  
+  # Categorical columns: Contingency tables
+  categorical_cols <- selected_data %>% select(where(is.character))
+  if (ncol(categorical_cols) > 0) {
+    contingency_tables <- lapply(names(categorical_cols), function(col) {
+      table(selected_data[[col]], useNA = "ifany")
+    })
+    names(contingency_tables) <- names(categorical_cols)
+    results$contingency_tables <- contingency_tables
+  }
+  
+  return(results)
+}
+
+```
+
+```{r}
+# Create a new column for total sales
+data <- data %>%
+  mutate(TotalSales = Quantity * UnitPrice)
+
+# Apply the function: Summary statistics for TotalSales grouped by Country
+summary_sales_by_country <- summarize_data(
+  data,
+  columns = c("TotalSales", "Quantity"),
+  group_var = "Country"
+)
+
+# Apply the function: Summary for numeric columns only
+summary_numeric <- summarize_data(data, columns = c("Quantity", "UnitPrice"))
+
+# Apply the function: Contingency tables for categorical variables
+summary_categorical <- summarize_data(data, columns = c("Country", "Description"))
+
+# Display the results for grouped numeric data
+summary_sales_by_country$numeric_summary
+
+# Display contingency tables for categorical data
+summary_categorical$contingency_tables
+
+```
+
+```{r}
+## Question 1: Average Quantity of Items Sold per Invoice for the Top 5 Countries
+# Plot average quantity sold per invoice for the first 5 countries
+data %>%
+  group_by(Country) %>%
+  summarise(AverageQuantity = mean(Quantity, na.rm = TRUE)) %>%
+  top_n(5, AverageQuantity) %>%  # Select top 5 countries by AverageQuantity
+  ggplot(aes(x = reorder(Country, -AverageQuantity), y = AverageQuantity)) +
+  geom_col(fill = "steelblue") +
+  coord_flip() +
+  labs(
+    title = "Average Quantity Sold per Invoice for the Top 5 Countries",
+    x = "Country",
+    y = "Average Quantity"
+  )
+
+
+```
+
+```{r}
+## Question 2: Total Sales by Country
+# Plot total sales by country
+data %>%
+  group_by(Country) %>%
+  summarise(TotalSales = sum(TotalSales, na.rm = TRUE)) %>%
+  ggplot(aes(x = reorder(Country, -TotalSales), y = TotalSales)) +
+  geom_col(fill = "darkgreen") +
+  coord_flip() +
+  labs(
+    title = "Total Sales by Country",
+    x = "Country",
+    y = "Total Sales"
+  )
+
+```
+
